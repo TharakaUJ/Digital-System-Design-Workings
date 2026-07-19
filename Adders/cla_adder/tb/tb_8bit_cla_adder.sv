@@ -18,7 +18,7 @@ module tb_cla_adder;
 
     initial begin
 
-        $dumpfile("./build/cla_adder.vcd"); $dumpvars(0, tb_cla_adder);
+        $dumpfile("./build/8bit_cla_adder.vcd"); $dumpvars(0, tb_cla_adder);
 
         // Test case 1
         A = 8'b00000001;

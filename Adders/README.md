@@ -15,8 +15,8 @@ My implementation of the above exercises can be found in the `rpc_adder` folder.
  - Compare performance of this with the adder in Ex2 (cascade)
 
  My implementation of the above exercises can be found in the `cla_adder` folder. The `cla_adder/rtl` folder contains the following files:
-    - `8bit_cla.sv` - 8 bit carry lookahead adder
-    - `4x8bit_cla.sv` - 32 bit carry lookahead adder using 4 x 8 bit CLAs
+    - `8bit_cla_adder.sv` - 8 bit carry lookahead adder
+    - `4x8bit_cla_adder.sv` - 32 bit carry lookahead adder using 4 x 8 bit CLAs
 
 ### Comparison of performance between the 32 bit adder using 4 x 8 bit adders (cascading) and the 32 bit carry lookahead adder using 4 x 8 bit CLAs 
 
@@ -29,3 +29,9 @@ My implementation of the above exercises can be found in the `rpc_adder` folder.
 
 
 
+## How to run the code using the Makefile
+1. Clone the repository to your local machine.
+2. Edit the Makefile to use your prefered simulator (Icarus Verilog or Verilator). I am using Icarus Verilog for my implementation.
+2. Navigate to the folder `Adders`.
+3. Run `make sim TB=<testbench_file_name>`.
+4. The simulation results will be generated in the `build` folder. You can view the waveform using a waveform viewer like GTKWave.
