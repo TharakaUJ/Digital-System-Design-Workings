@@ -1,145 +1,89 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# run.sh — Vivado automation CLI. Thin dispatcher: parses the subcommand
+# name, sources the matching scripts/commands/<name>.sh, and calls its
+# cmd_main function. All real logic lives in commands/ and tcl/tasks/.
+set -euo pipefail
 
-# Exit immediately if a command exits with a non-zero status
-set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Default variables
-PART="xc7a35tcg236-1"
-TOP_MODULE=""
-TESTBENCH=""
-RTL_DIR="."           # Changed to current directory to scan subfolders
-TB_DIR="."            # Changed to current directory to scan subfolders
-PROJ_DIR="./vivado_project"
-PROJ_NAME="assignment_1"
+# shellcheck source=lib/log.sh
+source "$SCRIPT_DIR/lib/log.sh"
+# shellcheck source=lib/args.sh
+source "$SCRIPT_DIR/lib/args.sh"
+# shellcheck source=lib/context.sh
+source "$SCRIPT_DIR/lib/context.sh"
+# shellcheck source=lib/paths.sh
+source "$SCRIPT_DIR/lib/paths.sh"
+# shellcheck source=lib/vivado.sh
+source "$SCRIPT_DIR/lib/vivado.sh"
 
-export _JAVA_AWT_WM_NONREPARENTING=1
+REPO_ROOT="$(repo_root)"
+export REPO_ROOT
+export SCRIPT_DIR
 
-# Use a standard function or environment export instead of an alias
-vivado() {
-    ~/src/Vivado/2024.2/bin/vivado "$@"
-}
+# Available subcommands. Adding a new one = add a file to commands/ +
+# one entry here.
+declare -A COMMANDS=(
+    [init]="Create/recreate a Vivado project and add discovered sources"
+    [sim]="Run behavioral simulation"
+    [synth]="Run synthesis and emit utilization/timing reports"
+    [timing]="Generate a standalone timing report (requires prior synth)"
+    [util]="Generate a standalone utilization report (requires prior synth)"
+    [clean]="Delete the generated Vivado project and its build artifacts"
+)
 
-# Help Menu Function
-show_help() {
-    echo "Usage: $0 [options] <action>"
-    echo ""
-    echo "Actions:"
-    echo "  init          Initialize the Vivado project from source folders"
-    echo "  synth         Run synthesis, generate resource reports & schematic"
-    echo "  sim           Run behavioral simulation"
-    echo "  all           Run init, synth, and sim sequentially"
-    echo ""
-    echo "Options:"
-    echo "  -p, --part    FPGA part number (default: $PART)"
-    echo "  -t, --top     Top-level module name for synthesis (required for synth/all)"
-    echo "  -b, --tb      Testbench module name for simulation"
-    echo "  -r, --rtl     Path to search root for RTL (default: $RTL_DIR)"
-    echo "  -s, --simdir  Path to search root for testbenches (default: $TB_DIR)"
-    echo "  -h, --help    Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  $0 -t my_top_design init"
-    echo "  $0 -t my_top_design -b my_tb_name all"
-    echo "  $0 -b custom_tb sim"
-    exit 0
-}
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") <command> [options]
 
-# Parse Command Line Options
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -p|--part)    PART="$2"; shift 2 ;;
-        -t|--top)     TOP_MODULE="$2"; shift 2 ;;
-        -b|--tb)      TESTBENCH="$2"; shift 2 ;;
-        -r|--rtl)     RTL_DIR="$2"; shift 2 ;;
-        -s|--simdir)  TB_DIR="$2"; shift 2 ;;
-        -h|--help)    show_help ;;
-        init|synth|sim|all) ACTION="$1"; shift ;;
-        *) echo "Error: Unknown argument '$1'"; show_help ;;
-    esac
-done
+Commands:
+EOF
+    for cmd in init sim synth timing util clean; do
+        printf '  %-8s %s\n' "$cmd" "${COMMANDS[$cmd]}"
+    done
+    cat <<EOF
 
-# Validate input
-if [ -z "$ACTION" ]; then
-    echo "Error: Missing action (init, synth, sim, or all)."
-    show_help
-fi
+Common options (accepted by every command):
+  --assignment NAME   Assignment directory (e.g. assignment1)   [required]
+  --exercise NAME     Exercise directory (e.g. exercise2)       [required]
+  --top MODULE        Top-level module name                    (init only, required)
+  --sim-top MODULE    Simulation top module                    (init only, optional)
+  --board NAME        Board name from scripts/config/default.json
+  --part PARTNUM      Explicit FPGA part number (overrides --board)
+  -h, --help          Show command-specific help
 
-PROJECT_PATH="${PROJ_DIR}/${PROJ_NAME}.xpr"
-
-# -----------------------------------------------------------------------------
-# Core Action Functions
-# -----------------------------------------------------------------------------
-
-run_init() {
-    echo "==> Initializing Vivado Project..."
-    vivado -mode batch -notrace -source /dev/stdin <<EOF
-create_project $PROJ_NAME $PROJ_DIR -part $PART -force
-
-# Target files only within nested 'rtl' folders to avoid mixing sources
-set rtl_files [glob -nocomplain -directory $RTL_DIR -type f **/rtl/*.v **/rtl/*.sv **/rtl/*.vhd]
-if {[llength \$rtl_files] > 0} { add_files -fileset sources_1 \$rtl_files }
-
-# Target files only within nested 'tb' folders
-set tb_files [glob -nocomplain -directory $TB_DIR -type f **/tb/*.v **/tb/*.sv **/tb/*.vhd]
-if {[llength \$tb_files] > 0} { add_files -fileset sim_1 \$tb_files }
-
-update_compile_order -fileset sources_1
-update_compile_order -fileset sim_1
-close_project
+Examples:
+  $(basename "$0") init  --assignment assignment1 --exercise exercise2 --top alu
+  $(basename "$0") synth --assignment assignment1 --exercise exercise2
+  $(basename "$0") clean --assignment assignment1 --exercise exercise2
 EOF
 }
 
-run_synth() {
-    if [ -z "$TOP_MODULE" ]; then
-        echo "Error: Synthesis requires a top module name. Pass it with -t or --top."
+main() {
+    if [[ $# -eq 0 ]]; then
+        usage
         exit 1
     fi
-    echo "==> Running Synthesis & Generating Reports..."
-    vivado -mode batch -notrace -source /dev/stdin <<EOF
-open_project $PROJECT_PATH
-set_property top $TOP_MODULE [current_fileset]
-reset_run synth_1
-launch_runs synth_1 -jobs 4
-wait_on_run synth_1
-open_run synth_1
-report_utilization -file utilization_report.txt
-close_project
-EOF
-}
 
-run_sim() {
-    echo "==> Running Simulation..."
-    TCL_ARGS=""
-    if [ -n "$TESTBENCH" ]; then
-        TCL_ARGS="-tclargs $TESTBENCH"
+    local cmd="$1"; shift
+
+    if [[ "$cmd" == "-h" || "$cmd" == "--help" ]]; then
+        usage
+        exit 0
     fi
 
-    vivado -mode batch -notrace $TCL_ARGS -source /dev/stdin <<EOF
-open_project $PROJECT_PATH
-if { \$argc > 0 } {
-    set tb_name [lindex \$argv 0]
-    set_property top \$tb_name [current_fileset -simset]
+    if [[ -z "${COMMANDS[$cmd]:-}" ]]; then
+        log_error "Unknown command: $cmd"
+        usage
+        exit 2
+    fi
+
+    local cmd_file="$SCRIPT_DIR/commands/$cmd.sh"
+    [[ -f "$cmd_file" ]] || die "Command implementation missing: $cmd_file"
+
+    # shellcheck source=/dev/null
+    source "$cmd_file"
+    cmd_main "$@"
 }
-update_compile_order -fileset sim_1
-launch_simulation
-run all
-close_project
-EOF
-}
 
-# -----------------------------------------------------------------------------
-# Execution Flow
-# -----------------------------------------------------------------------------
-
-case "$ACTION" in
-    init)  run_init ;;
-    synth) run_synth ;;
-    sim)   run_sim ;;
-    all)
-        run_init
-        run_synth
-        run_sim
-        ;;
-esac
-
-echo "==> Action '$ACTION' completed successfully."
+main "$@"

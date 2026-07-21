@@ -1,0 +1,16 @@
+{
+  "vivado": {
+    "default_part": "xc7a35tcpg236-1",
+    "boards": {
+      "basys3":    { "part": "xc7a35tcpg236-1" },
+      "nexys4ddr": { "part": "xc7a100tcsg324-1" }
+    }
+  },
+  "paths": {
+    "build_dir":    "build/vivado_projects",
+    "reports_dir":  "reports"
+  },
+  "reports": {
+    "location": "central"
+  }
+}
