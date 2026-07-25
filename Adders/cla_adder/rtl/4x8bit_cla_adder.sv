@@ -1,8 +1,9 @@
 `timescale 1ps/1ps
 
-module cascading_adder (
+module cascade_cla_adder(
     input logic [31:0] A,
     input logic [31:0] B,
+    input logic cin,
     output logic [31:0] sum,
     output logic cout
 );
@@ -10,12 +11,10 @@ module cascading_adder (
     logic [3:0] c_array;
     assign cout = c_array[3];
 
-    N_bit_adder #(
-        .N(8)
-    ) adder_1 (
+    cla_adder adder_1 (
         .A(A[7:0]),
         .B(B[7:0]),
-        .cin(1'b0),
+        .cin(cin),
         .sum(sum[7:0]),
         .cout(c_array[0])
     );
@@ -23,9 +22,7 @@ module cascading_adder (
     genvar i;
     generate
         for (i = 1; i < 4; i++) begin : adder_gen
-            N_bit_adder #(
-                .N(8)
-            ) adder_i (
+            cla_adder adder_i (
                 .A(A[8*i +: 8]),
                 .B(B[8*i +: 8]),
                 .cin(c_array[i-1]),
@@ -34,5 +31,5 @@ module cascading_adder (
             );
         end
     endgenerate
-
 endmodule
+
