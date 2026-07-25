@@ -38,8 +38,9 @@ module riscv_cfi_fsm (
     cmd_t cmd;
 
     assign data = packet[23:0];
-    assign cmd   = cmd_t'(packet[31:24]);
+    assign cmd = cmd_t'(packet[31:24]);
 
+    assign error = (current_state == ERROR);
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -48,30 +49,26 @@ module riscv_cfi_fsm (
         end else begin
             current_state <= next_state;
 
-            if ((current_state == IDLE) & (cmd == SET)) begin
+            if ((current_state == IDLE) && (cmd == SET)) begin
                 label <= data;
             end
-        end
-
-        if (current_state == ERROR) begin
-            error = 1'b1;
-        end else begin
-            error = 1'b0;
         end
     end
 
     always_comb begin
+        next_state = current_state;
+
         case (current_state)
-            IDLE:begin
-                if (cmd  == SET) begin
+            IDLE: begin
+                if (cmd == SET) begin
                     next_state = IDLE;
                 end else if (cmd == JUMP) begin
                     next_state = CHECK;
                 end
             end
 
-            CHECK:begin
-                if(cmd == LPAD) begin
+            CHECK: begin
+                if (cmd == LPAD) begin
                     if (data == label) begin
                         next_state = IDLE;
                     end else begin
@@ -82,11 +79,11 @@ module riscv_cfi_fsm (
                 end
             end
 
-            ERROR:begin
+            ERROR: begin
                 next_state = ERROR;
             end
 
-            default: next_state = current_state;
+            default: next_state = IDLE;
         endcase
     end
 endmodule

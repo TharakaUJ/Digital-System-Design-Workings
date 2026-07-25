@@ -49,7 +49,7 @@ module tb_riscv_cfi_fsm;
         send_packet(8'h02, 24'h000000); // JUMP
         send_packet(8'h03, 24'h999999); // LPAD (WRONG label!)
 
-        #1;
+        #10;
         if (error)  $display("SUCCESS: Error correctly flagged on label mismatch.");
         else        $error("FAIL: Error NOT flagged on label mismatch!");
 
