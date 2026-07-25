@@ -12,6 +12,7 @@ WAVE        = ./build/dump.vcd
 all: sim
 
 compile: $(SRCS)
+	mkdir -p ./build
 	$(VX) -g2012 -o $(OUT) $(SRCS)
 
 sim: compile
