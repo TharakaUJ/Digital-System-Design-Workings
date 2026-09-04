@@ -20,6 +20,7 @@ clean:
 
 sim:
 	mkdir -p $(BUILD_DIR)
+	mkdir -p $(dir $(OUTPUT))
 	iverilog -g2012 -o $(OUTPUT) -c $(TEST_FILE)
 
 run: sim
