@@ -47,6 +47,7 @@ typedef struct packed {
     logic [7:0] addr;
     logic [15:0] alu_result;
     logic [3:0]  i_rd;
+    logic [15:0] fetched_data;
   } exe_mem_reg_t;
 
 typedef struct packed {
@@ -100,15 +101,7 @@ typedef struct packed {
 
       // EXE: Execute stage
       if (decode_exe_reg.valid) begin    
-        temp_result_exec = '0;
-        case (decode_exe_reg.opcode)
-          MOVE: temp_result_exec = decode_exe_reg.reg_1;
-          ADD : temp_result_exec = decode_exe_reg.reg_1 + decode_exe_reg.reg_2;
-          SUB : temp_result_exec = decode_exe_reg.reg_1 - decode_exe_reg.reg_2;
-          MUL : temp_result_exec = decode_exe_reg.reg_1 * decode_exe_reg.reg_2;
-          default: ;
-        endcase
-        exe_mem_reg <= '{valid: 1'b1, pc_count: decode_exe_reg.pc_count, opcode: decode_exe_reg.opcode, addr: decode_exe_reg.addr, alu_result: temp_result_exec, i_rd: decode_exe_reg.i_rd};
+        exe_mem_reg <= '{valid: 1'b1, pc_count: decode_exe_reg.pc_count, opcode: decode_exe_reg.opcode, addr: decode_exe_reg.addr, alu_result: temp_result_exec, i_rd: decode_exe_reg.i_rd, fetched_data: temp_dmem_wdata_mem};
         exe_mem_reg.valid <= 1'b1;
         decode_exe_reg.valid <= 1'b0;
       end
@@ -117,8 +110,6 @@ typedef struct packed {
       if (exe_mem_reg.valid) begin
 
         // load or store
-        dmem_wdata <= temp_dmem_wdata_mem;
-
         mem_wb_reg <= '{valid: 1'b1, pc_count: exe_mem_reg.pc_count, opcode: exe_mem_reg.opcode, alu_result: exe_mem_reg.alu_result, i_rd: exe_mem_reg.i_rd, mem_data: dmem_rdata};
         mem_wb_reg.valid <= 1'b1;
         exe_mem_reg.valid <= 1'b0;
@@ -154,6 +145,7 @@ typedef struct packed {
 
   //Exec:
   always_comb begin EXEC_COMB
+    temp_result_exec = '0;
     case (decode_exe_reg.opcode)
       MOVE: temp_result_exec = decode_exe_reg.reg_1;
       ADD : temp_result_exec = decode_exe_reg.reg_1 + decode_exe_reg.reg_2;
@@ -169,12 +161,14 @@ typedef struct packed {
     dmem_addr = '0;
     dmem_wen   = 1'b0;
     temp_dmem_wdata_mem = '0;
+
+    dmem_wdata = exe_mem_reg.fetched_data;
     if (exe_mem_reg.opcode == LOAD) begin
       dmem_addr = exe_mem_reg.addr;
     end else if (exe_mem_reg.opcode == STORE) begin
       dmem_addr = exe_mem_reg.addr;
       dmem_wen   = 1'b1;
-      temp_dmem_wdata_mem = regs[exe_mem_reg.i_rd];
+      temp_dmem_wdata_mem = regs[decode_exe_reg.i_rd];
     end
   end
 
