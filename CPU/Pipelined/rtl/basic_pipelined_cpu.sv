@@ -95,7 +95,24 @@ typedef struct packed {
       end
 
       if (decode_reg.valid) begin
-        
+        logic [15:0] temp_result;
+        case (decode_reg.opcode)
+          LOAD: begin
+            // set adress 
+            temp_result <= dmem_rdata;
+          end
+
+          MOVE: temp_result <= decode_reg.reg_1;
+          ADD : temp_result <= decode_reg.reg_1 + decode_reg.reg_2;
+          SUB : temp_result <= decode_reg.reg_1 - decode_reg.reg_2;
+          MUL : temp_result <= decode_reg.reg_1 * decode_reg.reg_2;
+          JNZ : if (regs[decode_reg.i_reg] != '0) begin
+                  pc <= decode_reg.addr;
+                  decode_reg.valid <= 1'b0;
+                  fetch_reg.valid <= 1'b0;
+                end
+          default: ;
+        endcase
 
         execute_reg <= '{valid: 1'b1, pc_count: decode_reg.pc_count, opcode: decode_reg.opcode, addr: decode_reg.addr, alu_result: temp_result, i_rd: decode_reg.i_rd};
         execute_reg.valid <= 1'b1;
@@ -125,26 +142,6 @@ typedef struct packed {
     dmem_addr  = addr;
     dmem_wdata = regs[i_reg];
     dmem_wen   = !reset && opcode == STORE;
-  end
-
-  always_comb begin : execution_stage
-    logic [15:0] temp_result;
-        case (decode_reg.opcode)
-          LOAD: begin
-            // set adress 
-            temp_result <= dmem_rdata;
-          end
-          MOVE: temp_result <= decode_reg.reg_1;
-          ADD : temp_result <= decode_reg.reg_1 + decode_reg.reg_2;
-          SUB : temp_result <= decode_reg.reg_1 - decode_reg.reg_2;
-          MUL : temp_result <= decode_reg.reg_1 * decode_reg.reg_2;
-          JNZ : if (regs[decode_reg.i_reg] != '0) begin
-                  pc <= decode_reg.addr;
-                  decode_reg.valid <= 1'b0;
-                  fetch_reg.valid <= 1'b0;
-                end
-          default: ;
-        endcase
   end
   
 endmodule
