@@ -78,49 +78,42 @@ typedef struct packed {
 
     end else begin
 
-      // fetch stage
+      // fetch 
       fetch_decode_reg <= '{valid: 1'b1, pc_count: pc, instruction: imem_rdata};
       fetch_decode_reg.valid <= 1'b1;
       pc <= pc_temp;
 
 
-      // decode stage
-      if (fetch_decode_reg.valid) begin
+      // decode
+      instruction_type1_t inst1;
+      instruction_type2_t inst2;
 
-        instruction_type1_t inst1;
-        instruction_type2_t inst2;
+      inst1 = instruction_type1_t'(fetch_decode_reg.instruction);
+      inst2 = instruction_type2_t'(fetch_decode_reg.instruction);
 
-        inst1 = instruction_type1_t'(fetch_decode_reg.instruction);
-        inst2 = instruction_type2_t'(fetch_decode_reg.instruction);
+      decode_exe_reg <= '{valid: 1'b1, pc_count: fetch_decode_reg.pc_count, opcode: inst1.opcode, addr: inst1.addr, i_rs1: inst2.i_rs1, i_rs2: inst2.i_rs2, i_rd: inst2.i_rd,
+                        i_reg: inst1.ireg, reg_1: regs[inst2.i_rs1], reg_2: regs[inst2.i_rs2]};
+      decode_exe_reg.valid <= 1'b1;
+      fetch_decode_reg.valid <= 1'b0;
 
-        decode_exe_reg <= '{valid: 1'b1, pc_count: fetch_decode_reg.pc_count, opcode: inst1.opcode, addr: inst1.addr, i_rs1: inst2.i_rs1, i_rs2: inst2.i_rs2, i_rd: inst2.i_rd,
-                          i_reg: inst1.ireg, reg_1: regs[inst2.i_rs1], reg_2: regs[inst2.i_rs2]};
-        decode_exe_reg.valid <= 1'b1;
-        fetch_decode_reg.valid <= 1'b0;
-      end
 
       // EXE: Execute stage
-      if (decode_exe_reg.valid) begin    
-        exe_mem_reg <= '{valid: 1'b1, pc_count: decode_exe_reg.pc_count, opcode: decode_exe_reg.opcode, addr: decode_exe_reg.addr, alu_result: temp_result_exec, i_rd: decode_exe_reg.i_rd, fetched_data: temp_dmem_wdata_mem};
-        exe_mem_reg.valid <= 1'b1;
-        decode_exe_reg.valid <= 1'b0;
-      end
+      exe_mem_reg <= '{valid: 1'b1, pc_count: decode_exe_reg.pc_count, opcode: decode_exe_reg.opcode, addr: decode_exe_reg.addr, alu_result: temp_result_exec, i_rd: decode_exe_reg.i_rd, fetched_data: temp_dmem_wdata_mem};
+      exe_mem_reg.valid <= 1'b1;
+      decode_exe_reg.valid <= 1'b0;
+
+
 
       // MEM:
-      if (exe_mem_reg.valid) begin
+      mem_wb_reg <= '{valid: 1'b1, pc_count: exe_mem_reg.pc_count, opcode: exe_mem_reg.opcode, alu_result: exe_mem_reg.alu_result, i_rd: exe_mem_reg.i_rd, mem_data: dmem_rdata};
+      mem_wb_reg.valid <= 1'b1;
+      exe_mem_reg.valid <= 1'b0;
 
-        // load or store
-        mem_wb_reg <= '{valid: 1'b1, pc_count: exe_mem_reg.pc_count, opcode: exe_mem_reg.opcode, alu_result: exe_mem_reg.alu_result, i_rd: exe_mem_reg.i_rd, mem_data: dmem_rdata};
-        mem_wb_reg.valid <= 1'b1;
-        exe_mem_reg.valid <= 1'b0;
-      end
+
 
       // WB :
-      if (mem_wb_reg.valid) begin
-        // write back to register file
-        regs[mem_wb_reg.i_rd] <= temp_result_wb;
-        mem_wb_reg.valid <= 1'b0;
-      end
+      regs[mem_wb_reg.i_rd] <= temp_result_wb;
+      mem_wb_reg.valid <= 1'b0;
     end
   end
 
