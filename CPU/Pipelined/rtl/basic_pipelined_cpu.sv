@@ -149,72 +149,22 @@ module cpu (
 
     else begin
 
-      // ========================================================
-      // WB
-      // ========================================================
+      pc <= pc_next;
 
-      if (mem_wb_reg.valid) begin
 
-        case (mem_wb_reg.opcode)
+      // fetch -> decode
+      fetch_decode_reg <= '0;
 
-          LOAD,
-          MOVE,
-          ADD,
-          SUB,
-          MUL:
-            regs[mem_wb_reg.i_rd] <= temp_result_wb;
+      if (!branch_taken) begin
 
-          default:
-            ;
-
-        endcase
+        fetch_decode_reg.valid       <= 1'b1;
+        fetch_decode_reg.pc_count    <= pc;
+        fetch_decode_reg.instruction <= imem_rdata;
 
       end
 
-
-      // ========================================================
-      // MEM -> WB
-      // ========================================================
-
-      mem_wb_reg <= '0;
-
-      if (exe_mem_reg.valid) begin
-
-        mem_wb_reg.valid      <= 1'b1;
-        mem_wb_reg.pc_count   <= exe_mem_reg.pc_count;
-        mem_wb_reg.opcode     <= exe_mem_reg.opcode;
-        mem_wb_reg.alu_result <= exe_mem_reg.alu_result;
-        mem_wb_reg.i_rd       <= exe_mem_reg.i_rd;
-        mem_wb_reg.mem_data   <= dmem_rdata;
-
-      end
-
-
-      // ========================================================
-      // EX -> MEM
-      // ========================================================
-
-      exe_mem_reg <= '0;
-
-      if (decode_exe_reg.valid) begin
-
-        exe_mem_reg.valid      <= 1'b1;
-        exe_mem_reg.pc_count   <= decode_exe_reg.pc_count;
-        exe_mem_reg.opcode     <= decode_exe_reg.opcode;
-        exe_mem_reg.addr       <= decode_exe_reg.addr;
-        exe_mem_reg.alu_result <= temp_result_exec;
-        exe_mem_reg.i_rd       <= decode_exe_reg.i_rd;
-        exe_mem_reg.store_data <= decode_exe_reg.store_data;
-
-      end
-
-
-      // ========================================================
-      // ID -> EX
-      // ========================================================
-
+      // decode -> execute
       decode_exe_reg <= '0;
-
       if (fetch_decode_reg.valid) begin
 
         instruction_type1_t inst1;
@@ -241,37 +191,57 @@ module cpu (
 
       end
 
+      // execute -> memory
+      exe_mem_reg <= '0;
+      if (decode_exe_reg.valid) begin
 
-      // ========================================================
-      // IF -> ID
-      // ========================================================
-
-      fetch_decode_reg <= '0;
-
-      if (!branch_taken) begin
-
-        fetch_decode_reg.valid       <= 1'b1;
-        fetch_decode_reg.pc_count    <= pc;
-        fetch_decode_reg.instruction <= imem_rdata;
+        exe_mem_reg.valid      <= 1'b1;
+        exe_mem_reg.pc_count   <= decode_exe_reg.pc_count;
+        exe_mem_reg.opcode     <= decode_exe_reg.opcode;
+        exe_mem_reg.addr       <= decode_exe_reg.addr;
+        exe_mem_reg.alu_result <= temp_result_exec;
+        exe_mem_reg.i_rd       <= decode_exe_reg.i_rd;
+        exe_mem_reg.store_data <= decode_exe_reg.store_data;
 
       end
 
 
-      // ========================================================
-      // PC
-      // ========================================================
+      mem_wb_reg <= '0;
+      if (exe_mem_reg.valid) begin
 
-      pc <= pc_next;
+        mem_wb_reg.valid      <= 1'b1;
+        mem_wb_reg.pc_count   <= exe_mem_reg.pc_count;
+        mem_wb_reg.opcode     <= exe_mem_reg.opcode;
+        mem_wb_reg.alu_result <= exe_mem_reg.alu_result;
+        mem_wb_reg.i_rd       <= exe_mem_reg.i_rd;
+        mem_wb_reg.mem_data   <= dmem_rdata;
 
+      end
+
+      // WB
+      if (mem_wb_reg.valid) begin
+
+        case (mem_wb_reg.opcode)
+
+          LOAD,
+          MOVE,
+          ADD,
+          SUB,
+          MUL:
+            regs[mem_wb_reg.i_rd] <= temp_result_wb;
+
+          default:
+            ;
+
+        endcase
+
+      end
     end
 
   end
 
 
-  // ============================================================
   // FETCH
-  // ============================================================
-
   always_comb begin : FETCH_COMB
 
     imem_addr = pc;
@@ -279,12 +249,7 @@ module cpu (
   end
 
 
-  // ============================================================
   // DECODE / NEXT PC
-  //
-  // JNZ is deliberately resolved here.
-  // ============================================================
-
   always_comb begin : DECODE_COMB
 
     pc_next     = pc + 1'b1;
@@ -317,10 +282,7 @@ module cpu (
   end
 
 
-  // ============================================================
   // EXECUTE
-  // ============================================================
-
   always_comb begin : EXEC_COMB
 
     temp_result_exec = '0;
@@ -353,9 +315,7 @@ module cpu (
   end
 
 
-  // ============================================================
   // MEMORY
-  // ============================================================
 
   always_comb begin : MEM_COMB
 
@@ -395,10 +355,7 @@ module cpu (
   end
 
 
-  // ============================================================
   // WRITE BACK
-  // ============================================================
-
   always_comb begin : WB_COMB
 
     temp_result_wb = '0;
