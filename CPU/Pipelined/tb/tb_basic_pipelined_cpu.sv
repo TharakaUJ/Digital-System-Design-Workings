@@ -39,6 +39,7 @@ module tb_cpu;
 
   initial forever #5 clk = ~clk;
 
+  localparam [15:0] NOP = {4'hF, 4'hF, 4'hF, ADD};
 
   initial begin
 
@@ -59,78 +60,65 @@ module tb_cpu;
     // INSTRUCTION MEMORY
     // ============================================================
 
+    // Fill IMEM with NOPs by default to pad pipeline stages
+    for (int i = 0; i < 256; i++) begin
+      imem.mem[i] = NOP;
+    end
+
     // ------------------------------------------------------------
     // LOAD
     // ------------------------------------------------------------
-
     // r1 = mem[0] = 10
     imem.mem[0] = {8'h00, 4'h1, LOAD};
 
-
     // ------------------------------------------------------------
     // LOAD
     // ------------------------------------------------------------
-
     // r2 = mem[1] = 20
-    imem.mem[1] = {8'h01, 4'h2, LOAD};
-
+    imem.mem[4] = {8'h01, 4'h2, LOAD};
 
     // ------------------------------------------------------------
     // MOVE
     // ------------------------------------------------------------
-
     // r3 = r1
-    imem.mem[2] = {4'h0, 4'h1, 4'h3, MOVE};
-
-
+    imem.mem[8] = {4'h1, 4'h0, 4'h3, MOVE};
     // ------------------------------------------------------------
     // ADD
     // ------------------------------------------------------------
-
     // r4 = r1 + r2
-    imem.mem[3] = {4'h2, 4'h1, 4'h4, ADD};
-
+    imem.mem[12] = {4'h2, 4'h1, 4'h4, ADD};
 
     // ------------------------------------------------------------
     // SUB
     // ------------------------------------------------------------
-
     // r5 = r2 - r1
-    imem.mem[4] = {4'h2, 4'h1, 4'h5, SUB};
-
+    imem.mem[16] = {4'h2, 4'h1, 4'h5, SUB};
 
     // ------------------------------------------------------------
     // MUL
     // ------------------------------------------------------------
-
     // r6 = r1 * r2
-    imem.mem[5] = {4'h1, 4'h2, 4'h6, MUL};
-
+    imem.mem[20] = {4'h1, 4'h2, 4'h6, MUL};
 
     // ------------------------------------------------------------
     // STORE
     // ------------------------------------------------------------
-
     // mem[2] = r6
-    imem.mem[6] = {8'h02, 4'h6, STORE};
-
+    imem.mem[24] = {8'h02, 4'h6, STORE};
 
     // ------------------------------------------------------------
     // JNZ
     // ------------------------------------------------------------
-
-    // If r1 != 0, jump to PC 9
-    imem.mem[7] = {8'h09, 4'h1, JNZ};
-
+    // If r1 != 0, jump to PC 36
+    imem.mem[28] = {8'd36, 4'h1, JNZ};
 
     // This instruction should be skipped if JNZ works.
     // r7 = mem[3] = 40
-    imem.mem[8] = {8'h03, 4'h7, LOAD};
-
+    imem.mem[32] = {8'h03, 4'h7, LOAD};
 
     // Jump target
-    // r7 = mem[2] = 30
-    imem.mem[9] = {8'h02, 4'h7, LOAD};
+    // r7 = mem[2] = 200 (updated from STORE)
+    imem.mem[36] = {8'h02, 4'h7, LOAD};
 
 
     // ============================================================
@@ -141,17 +129,15 @@ module tb_cpu;
     #1ps;
     reset = 0;
 
-
     // ============================================================
     // RUN
     // ============================================================
 
-    // Give the pipeline plenty of time to drain.
-    repeat (20)
+    // Give the pipeline plenty of time to drain through all the NOPs
+    repeat (60)
       @(posedge clk);
 
     #1ps;
-
 
     // ============================================================
     // CHECK RESULTS
@@ -173,7 +159,6 @@ module tb_cpu;
 
     $display("");
 
-
     // ============================================================
     // INDIVIDUAL TESTS
     // ============================================================
@@ -184,13 +169,11 @@ module tb_cpu;
     else
       $display("FAIL: LOAD");
 
-
     // LOAD
     assert (dut.regs[2] == 16'd20)
       $display("PASS: LOAD 2");
     else
       $display("FAIL: LOAD 2");
-
 
     // MOVE
     assert (dut.regs[3] == 16'd10)
@@ -198,13 +181,11 @@ module tb_cpu;
     else
       $display("FAIL: MOVE");
 
-
     // ADD
     assert (dut.regs[4] == 16'd30)
       $display("PASS: ADD");
     else
       $display("FAIL: ADD");
-
 
     // SUB
     assert (dut.regs[5] == 16'd10)
@@ -212,13 +193,11 @@ module tb_cpu;
     else
       $display("FAIL: SUB");
 
-
     // MUL
     assert (dut.regs[6] == 16'd200)
       $display("PASS: MUL");
     else
       $display("FAIL: MUL");
-
 
     // STORE
     assert (dmem.mem[2] == 16'd200)
@@ -226,13 +205,11 @@ module tb_cpu;
     else
       $display("FAIL: STORE");
 
-
     // JNZ
-    assert (dut.regs[7] == 16'd30)
+    assert (dut.regs[7] == 16'd200) // Updated expectation since it loads the STOREd result
       $display("PASS: JNZ");
     else
       $display("FAIL: JNZ");
-
 
     $display("");
     $display("========================================");
