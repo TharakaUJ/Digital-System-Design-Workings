@@ -108,6 +108,8 @@ module cpu (
     logic [3:0]  i_rd;
   } mem_wb_reg_t;
 
+  // just for testing, we can use a NOP instruction to fill the pipeline
+  localparam [15:0] NOP = {4'hF, 4'hF, 4'hF, ADD}; // r15 = r15 + r15
 
   fetch_decode_reg_t fetch_decode_reg;
   decode_exe_reg_t   decode_exe_reg;
