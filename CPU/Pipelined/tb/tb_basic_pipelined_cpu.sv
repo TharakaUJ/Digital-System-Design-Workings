@@ -60,65 +60,68 @@ module tb_cpu;
     // INSTRUCTION MEMORY
     // ============================================================
 
-    // Fill IMEM with NOPs by default to pad pipeline stages
+    // Fill IMEM with NOPs so the pipeline drains cleanly after the program
     for (int i = 0; i < 256; i++) begin
       imem.mem[i] = NOP;
     end
 
-    // ------------------------------------------------------------
-    // LOAD
-    // ------------------------------------------------------------
-    // r1 = mem[0] = 10
+    // Program is packed back-to-back (no NOP padding), so every
+    // dependency below relies on forwarding.
+
+    // 0: r1 = mem[0] = 10
     imem.mem[0] = {8'h00, 4'h1, LOAD};
 
-    // ------------------------------------------------------------
-    // LOAD
-    // ------------------------------------------------------------
-    // r2 = mem[1] = 20
-    imem.mem[4] = {8'h01, 4'h2, LOAD};
+    // 1: r2 = mem[1] = 20
+    imem.mem[1] = {8'h01, 4'h2, LOAD};
+
+    // 2: r3 = r1                (r1 forwarded from MEM: load data)
+    imem.mem[2] = {4'h1, 4'h0, 4'h3, MOVE};
+
+    // 3: r4 = r2 + r1           (r2 from MEM: load data, r1 from WB)
+    imem.mem[3] = {4'h2, 4'h1, 4'h4, ADD};
+
+    // 4: r5 = r2 - r1           (r2 from WB)
+    imem.mem[4] = {4'h2, 4'h1, 4'h5, SUB};
+
+    // 5: r6 = r1 * r2
+    imem.mem[5] = {4'h1, 4'h2, 4'h6, MUL};
+
+    // 6: mem[2] = r6            (r6 forwarded from EX)
+    imem.mem[6] = {8'h02, 4'h6, STORE};
+
+    // 7: if r1 != 0, jump to PC 9
+    imem.mem[7] = {8'd9, 4'h1, JNZ};
+
+    // 8: should be skipped if JNZ works.  r7 = mem[3] = 40
+    imem.mem[8] = {8'h03, 4'h7, LOAD};
+
+    // 9: jump target.  r7 = mem[2] = 200 (updated by STORE)
+    imem.mem[9] = {8'h02, 4'h7, LOAD};
 
     // ------------------------------------------------------------
-    // MOVE
+    // LOAD-USE cases: consumer directly follows the LOAD, so the
+    // data is not available yet and the CPU must stall one cycle.
     // ------------------------------------------------------------
-    // r3 = r1
-    imem.mem[8] = {4'h1, 4'h0, 4'h3, MOVE};
-    // ------------------------------------------------------------
-    // ADD
-    // ------------------------------------------------------------
-    // r4 = r1 + r2
-    imem.mem[12] = {4'h2, 4'h1, 4'h4, ADD};
 
-    // ------------------------------------------------------------
-    // SUB
-    // ------------------------------------------------------------
-    // r5 = r2 - r1
-    imem.mem[16] = {4'h2, 4'h1, 4'h5, SUB};
+    // 10: r8 = r7 + r7 = 400    (LOAD -> ALU, both operands)
+    imem.mem[10] = {4'h7, 4'h7, 4'h8, ADD};
 
-    // ------------------------------------------------------------
-    // MUL
-    // ------------------------------------------------------------
-    // r6 = r1 * r2
-    imem.mem[20] = {4'h1, 4'h2, 4'h6, MUL};
+    // 11: r9 = mem[1] = 20
+    imem.mem[11] = {8'h01, 4'h9, LOAD};
 
-    // ------------------------------------------------------------
-    // STORE
-    // ------------------------------------------------------------
-    // mem[2] = r6
-    imem.mem[24] = {8'h02, 4'h6, STORE};
+    // 12: mem[4] = r9 = 20      (LOAD -> STORE)
+    imem.mem[12] = {8'h04, 4'h9, STORE};
 
-    // ------------------------------------------------------------
-    // JNZ
-    // ------------------------------------------------------------
-    // If r1 != 0, jump to PC 36
-    imem.mem[28] = {8'd36, 4'h1, JNZ};
+    // 13: r10 = mem[0] = 10
+    imem.mem[13] = {8'h00, 4'hA, LOAD};
 
-    // This instruction should be skipped if JNZ works.
-    // r7 = mem[3] = 40
-    imem.mem[32] = {8'h03, 4'h7, LOAD};
+    // 14: if r10 != 0, jump to 16   (LOAD -> JNZ)
+    imem.mem[14] = {8'd16, 4'hA, JNZ};
 
-    // Jump target
-    // r7 = mem[2] = 200 (updated from STORE)
-    imem.mem[36] = {8'h02, 4'h7, LOAD};
+    // 15: should be skipped.  r11 = mem[3] = 40
+    imem.mem[15] = {8'h03, 4'hB, LOAD};
+
+    // 16 onwards: NOPs
 
 
     // ============================================================
@@ -133,8 +136,7 @@ module tb_cpu;
     // RUN
     // ============================================================
 
-    // Give the pipeline plenty of time to drain through all the NOPs
-    repeat (60)
+    repeat (30)
       @(posedge clk);
 
     #1ps;
@@ -206,10 +208,28 @@ module tb_cpu;
       $display("FAIL: STORE");
 
     // JNZ
-    assert (dut.regs[7] == 16'd200) // Updated expectation since it loads the STOREd result
+    assert (dut.regs[7] == 16'd200)
       $display("PASS: JNZ");
     else
       $display("FAIL: JNZ");
+
+    // LOAD -> ALU
+    assert (dut.regs[8] == 16'd400)
+      $display("PASS: LOAD-USE ALU");
+    else
+      $display("FAIL: LOAD-USE ALU (r8 = %0d, expected 400)", dut.regs[8]);
+
+    // LOAD -> STORE
+    assert (dut.regs[9] == 16'd20 && dmem.mem[4] == 16'd20)
+      $display("PASS: LOAD-USE STORE");
+    else
+      $display("FAIL: LOAD-USE STORE (mem[4] = %0d, expected 20)", dmem.mem[4]);
+
+    // LOAD -> JNZ (r11 must stay 0 because the LOAD at 15 is skipped)
+    assert (dut.regs[10] == 16'd10 && dut.regs[11] == 16'd0)
+      $display("PASS: LOAD-USE JNZ");
+    else
+      $display("FAIL: LOAD-USE JNZ (r11 = %0d, expected 0)", dut.regs[11]);
 
     $display("");
     $display("========================================");
