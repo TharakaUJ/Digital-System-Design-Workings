@@ -121,17 +121,15 @@ module cpu (
   logic [15:0] temp_result_wb;
 
 
-  // ============================================================
   // JNZ / branch signals
-  // ============================================================
-
   logic       branch_taken;
   logic [7:0] branch_target;
 
+  // Stall signal for hazard prevention
+  logic stall;
 
-  // ============================================================
+
   // Helper functions
-  // ============================================================
   function automatic logic writes_reg(input logic [3:0] op);
     case (op)
       LOAD, MOVE, ADD, SUB, MUL: return 1'b1;
@@ -185,24 +183,24 @@ module cpu (
     end
 
     else begin
+      if (!stall) begin
+        pc <= pc_next;
 
-      pc <= pc_next;
+        // fetch -> decode
+        fetch_decode_reg <= '0;
 
+        if (!branch_taken) begin
 
-      // fetch -> decode
-      fetch_decode_reg <= '0;
+          fetch_decode_reg.valid       <= 1'b1;
+          fetch_decode_reg.pc_count    <= pc;
+          fetch_decode_reg.instruction <= imem_rdata;
 
-      if (!branch_taken) begin
-
-        fetch_decode_reg.valid       <= 1'b1;
-        fetch_decode_reg.pc_count    <= pc;
-        fetch_decode_reg.instruction <= imem_rdata;
-
+        end
       end
 
       // decode -> execute
       decode_exe_reg <= '0;
-      if (fetch_decode_reg.valid) begin
+      if (fetch_decode_reg.valid && !stall) begin
 
         instruction_type1_t inst1;
         instruction_type2_t inst2;
@@ -227,8 +225,6 @@ module cpu (
         decode_exe_reg.reg_2    <= update_reg(inst2.i_rs2);
 
         decode_exe_reg.store_data <= update_reg(inst1.ireg);
-
-        
 
       end
 
@@ -306,16 +302,12 @@ module cpu (
       inst1 = instruction_type1_t'(fetch_decode_reg.instruction);
 
 
-      if (inst1.opcode == JNZ) begin
-
-        if (regs[inst1.ireg] != '0) begin
-
+      if (inst1.opcode == JNZ && !stall) begin
+        if (update_reg(inst1.ireg) != '0) begin
           pc_next      = inst1.addr;
           branch_taken = 1'b1;
           branch_target = inst1.addr;
-
         end
-
       end
 
     end
@@ -417,6 +409,27 @@ module cpu (
 
     endcase
 
+  end
+
+  always_comb begin : STALL_COMB
+    instruction_type1_t s1;
+    instruction_type2_t s2;
+    logic [3:0] ld;
+
+    s1 = instruction_type1_t'(fetch_decode_reg.instruction);
+    s2 = instruction_type2_t'(fetch_decode_reg.instruction);
+    ld = decode_exe_reg.i_rd;
+
+    stall = 1'b0;
+
+    if (fetch_decode_reg.valid && decode_exe_reg.valid && decode_exe_reg.opcode == LOAD) begin
+      case (s1.opcode)
+        MOVE:          stall = (s2.i_rs1 == ld);
+        ADD, SUB, MUL: stall = (s2.i_rs1 == ld) || (s2.i_rs2 == ld);
+        STORE, JNZ:    stall = (s1.ireg == ld);
+        default:       stall = 1'b0;
+      endcase
+    end
   end
 
 endmodule

@@ -98,6 +98,31 @@ module tb_cpu;
     // 9: jump target.  r7 = mem[2] = 200 (updated by STORE)
     imem.mem[9] = {8'h02, 4'h7, LOAD};
 
+    // ------------------------------------------------------------
+    // LOAD-USE cases: consumer directly follows the LOAD, so the
+    // data is not available yet and the CPU must stall one cycle.
+    // ------------------------------------------------------------
+
+    // 10: r8 = r7 + r7 = 400    (LOAD -> ALU, both operands)
+    imem.mem[10] = {4'h7, 4'h7, 4'h8, ADD};
+
+    // 11: r9 = mem[1] = 20
+    imem.mem[11] = {8'h01, 4'h9, LOAD};
+
+    // 12: mem[4] = r9 = 20      (LOAD -> STORE)
+    imem.mem[12] = {8'h04, 4'h9, STORE};
+
+    // 13: r10 = mem[0] = 10
+    imem.mem[13] = {8'h00, 4'hA, LOAD};
+
+    // 14: if r10 != 0, jump to 16   (LOAD -> JNZ)
+    imem.mem[14] = {8'd16, 4'hA, JNZ};
+
+    // 15: should be skipped.  r11 = mem[3] = 40
+    imem.mem[15] = {8'h03, 4'hB, LOAD};
+
+    // 16 onwards: NOPs
+
 
     // ============================================================
     // RELEASE RESET
@@ -187,6 +212,24 @@ module tb_cpu;
       $display("PASS: JNZ");
     else
       $display("FAIL: JNZ");
+
+    // LOAD -> ALU
+    assert (dut.regs[8] == 16'd400)
+      $display("PASS: LOAD-USE ALU");
+    else
+      $display("FAIL: LOAD-USE ALU (r8 = %0d, expected 400)", dut.regs[8]);
+
+    // LOAD -> STORE
+    assert (dut.regs[9] == 16'd20 && dmem.mem[4] == 16'd20)
+      $display("PASS: LOAD-USE STORE");
+    else
+      $display("FAIL: LOAD-USE STORE (mem[4] = %0d, expected 20)", dmem.mem[4]);
+
+    // LOAD -> JNZ (r11 must stay 0 because the LOAD at 15 is skipped)
+    assert (dut.regs[10] == 16'd10 && dut.regs[11] == 16'd0)
+      $display("PASS: LOAD-USE JNZ");
+    else
+      $display("FAIL: LOAD-USE JNZ (r11 = %0d, expected 0)", dut.regs[11]);
 
     $display("");
     $display("========================================");
