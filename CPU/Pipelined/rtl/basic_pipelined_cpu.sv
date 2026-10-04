@@ -32,14 +32,14 @@ module cpu (
     logic [7:0] addr;
     logic [3:0] ireg;
     logic [3:0] opcode;
-  } instruction_type1_t;
+  } instruction_type1_t; // LOAD, STORE, JNZ
 
   typedef struct packed {
     logic [3:0] i_rs1;
     logic [3:0] i_rs2;
     logic [3:0] i_rd;
     logic [3:0] opcode;
-  } instruction_type2_t;
+  } instruction_type2_t; // MOVE, ADD, SUB, MUL
 
 
   // ============================================================
@@ -130,8 +130,43 @@ module cpu (
 
 
   // ============================================================
-  // Pipeline registers
+  // Helper functions
   // ============================================================
+  function automatic logic writes_reg(input logic [3:0] op);
+    case (op)
+      LOAD, MOVE, ADD, SUB, MUL: return 1'b1;
+      default:                   return 1'b0;
+    endcase
+  endfunction
+
+  function automatic logic [15:0] update_reg(
+    input logic [3:0] reg_index
+  );
+    logic [15:0] temp_result;
+
+    // last assignment wins: oldest stage first, youngest last
+    temp_result = regs[reg_index];
+
+    // check wb
+    if (mem_wb_reg.valid && writes_reg(mem_wb_reg.opcode)
+        && mem_wb_reg.i_rd == reg_index)
+      temp_result = temp_result_wb;
+
+    // check mem
+    if (exe_mem_reg.valid && writes_reg(exe_mem_reg.opcode)
+        && exe_mem_reg.i_rd == reg_index)
+      temp_result = (exe_mem_reg.opcode == LOAD) ? dmem_rdata
+                                                 : exe_mem_reg.alu_result;
+
+    // check ex (a LOAD here has no data yet -> stall instead)
+    if (decode_exe_reg.valid && writes_reg(decode_exe_reg.opcode)
+        && decode_exe_reg.opcode != LOAD
+        && decode_exe_reg.i_rd == reg_index)
+      temp_result = temp_result_exec;
+
+    return temp_result;
+  endfunction
+
 
   always_ff @(posedge clk) begin
 
@@ -186,10 +221,14 @@ module cpu (
         decode_exe_reg.i_rd     <= inst2.i_rd;
         decode_exe_reg.i_reg    <= inst1.ireg;
 
-        decode_exe_reg.reg_1    <= regs[inst2.i_rs1];
-        decode_exe_reg.reg_2    <= regs[inst2.i_rs2];
+        
 
-        decode_exe_reg.store_data <= regs[inst1.ireg];
+        decode_exe_reg.reg_1    <= update_reg(inst2.i_rs1);
+        decode_exe_reg.reg_2    <= update_reg(inst2.i_rs2);
+
+        decode_exe_reg.store_data <= update_reg(inst1.ireg);
+
+        
 
       end
 
